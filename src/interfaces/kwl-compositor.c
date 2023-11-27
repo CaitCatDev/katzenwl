@@ -2,8 +2,9 @@
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 #include <stdint.h>
-#include <log/kwl-log.h>
-#include <kwl_macros.h>
+
+#include <kwl/log/logger.h>
+#include <kwl-private/util/macros.h>
 
 #define WL_COMPOSITOR_VERSION 6
 

@@ -14,10 +14,12 @@
 #include <wayland-server-protocol.h>
 
 /*our stuff*/
-#include <kwl_macros.h>
-#include <log/kwl-log.h>
+#include <kwl-private/util/macros.h>
+#include <kwl-private/backend/xcb.h>
 
-#include <x11.h>
+#include <kwl/interfaces/kwl-output.h>
+
+#include <kwl/log/logger.h>
 
 static const char *xcb_connection_err_to_str(int error) {
 
@@ -62,8 +64,39 @@ static void kwl_xcb_expose(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
 	wl_signal_emit(&xcb->expose, NULL);
 }
 
+/* TODO: should we move the output creation as it's in a bit of akwards state.
+ * AS the X server on my PC is 50/50 sometimes it sends a configure event first
+ * sometimes it sends a map event first which introduces the need for configure 
+ * events to check if the output member is set in xcb structure but if we where to 
+ * do xcb_map_window_checked() we could check if the map is successful and then 
+ * create the output then saving us having to check output is set in configure
+ *
+ */
 static void kwl_xcb_map(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
+	kwl_output_t *output = kwl_output_init(xcb->display);
+
+	xcb->output = output;
+
+	kwl_log_warn("Map");
+
+	output->make = "XCB Display";
+	output->model = "XCB Window";
+	output->mode.width = 600;
+	output->mode.height = 600;
+	output->mode.flag = WL_OUTPUT_MODE_CURRENT;
+	output->mode.refresh = 60000;
+	/*In theroy a client app should now be able to bind output and see these details*/
+}
+
+static void kwl_xcb_configure(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
+	xcb_configure_notify_event_t *configure = (void*)ev;
 	
+	kwl_log_warn("Configure %dx%d\n", configure->width, configure->height);
+
+	if(xcb->output) {
+	xcb->output->mode.height = configure->height;
+	xcb->output->mode.width = configure->width;
+	}
 }
 
 static int kwl_xcb_event(int fd, uint32_t mask, void *data) {
@@ -72,13 +105,15 @@ static int kwl_xcb_event(int fd, uint32_t mask, void *data) {
 
 	while((ev = xcb_poll_for_event(xcb->connection))) {
 		switch(ev->response_type & 0x7f) {
-			case XCB_MAP_WINDOW:
+			case XCB_MAP_NOTIFY:
 				kwl_xcb_map(xcb, ev);
 				break;
 			case XCB_EXPOSE:
 				kwl_xcb_expose(xcb, ev);
 				break;
-			
+			case XCB_CONFIGURE_NOTIFY:
+				kwl_xcb_configure(xcb, ev);
+				break;
 			default:
 				kwl_log_warn("Unhandled Event: %s\n", xcb_errors_get_name_for_xcb_event(xcb->err_ctx, ev, NULL));
 		}
@@ -155,8 +190,11 @@ void *kwl_xcb_backend_init(struct wl_display *display) {
 	xcb_flush(xcb->connection);
 
 	loop = wl_display_get_event_loop(display);
+	xcb->display = display;
 
 	wl_signal_init(&xcb->expose);
+	
+	kwl_log_info("%d\n", xcb_get_file_descriptor(xcb->connection));
 
 	xcb->xevent = wl_event_loop_add_fd(loop, xcb_get_file_descriptor(xcb->connection), 
 			WL_EVENT_READABLE, kwl_xcb_event, xcb);

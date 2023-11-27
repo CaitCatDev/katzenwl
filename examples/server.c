@@ -2,8 +2,11 @@
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 
-#include <log/kwl-log.h>
-#include <kwl_macros.h>
+#include <kwl/log/logger.h>
+
+#include <kwl-private/util/macros.h>
+#include <kwl-private/backend/xcb.h>
+#include <kwl-private/renderer/xcb.h>
 
 #include <unistd.h>
 #include <signal.h>
@@ -33,7 +36,6 @@ int sigint_handler(int signo, void *data) {
 }
 
 
-#include <x11.h>
 
 void kwl_compositor_create(struct wl_display *display);
 void *kwl_xcb_backend_init(struct wl_display *display);

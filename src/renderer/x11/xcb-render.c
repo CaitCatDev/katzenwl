@@ -1,14 +1,14 @@
 /*Software renderer for X backend probably not going to be part of release
  * build
  */
-
-#include <x11.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
+
+#include <kwl-private/renderer/xcb.h>
 
 void kwl_xcb_clear_screen(kwl_xcb_renderer_t *renderer, float r, float g, float b) {
 	uint8_t red = 0xff * r;

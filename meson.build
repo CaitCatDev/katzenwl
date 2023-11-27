@@ -13,7 +13,7 @@ if get_option('buildtype').startswith('debug')
   message('Debug build enabled')
 endif
 
-src_files = [ 'src/backend/xcb.c', 'src/renderer/x11/xcb-render.c', 'src/interfaces/kwl-compositor.c', 'src/log/kwl-log.c' ]
+src_files = [ 'src/backend/xcb.c', 'src/renderer/x11/xcb-render.c', 'src/interfaces/kwl-compositor.c', 'src/interfaces/kwl-output.c', 'src/log/kwl-log.c' ]
 deps = [ dependency('wayland-server'), dependency('xcb'), dependency('xcb-errors') ]
 includes = include_directories('includes')
 

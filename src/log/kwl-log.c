@@ -4,7 +4,7 @@
 
 #include <stdlib.h>
 
-#include <log/kwl-log.h>
+#include <kwl/log/logger.h>
 
 /*Private functions*/
 static enum kwl_log_levels log_level;

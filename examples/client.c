@@ -8,8 +8,8 @@
 #include <string.h>
 
 
-#include <log/kwl-log.h>
-#include <kwl_macros.h>
+#include <kwl/log/logger.h>
+#include <kwl-private/util/macros.h>
 
 struct cstate {
 	struct wl_display *display;
