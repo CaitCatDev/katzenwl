@@ -78,7 +78,8 @@ static void kwl_xcb_map(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
 	xcb->output = output;
 
 	kwl_log_warn("Map");
-
+	
+	
 	output->make = "XCB Display";
 	output->model = "XCB Window";
 	output->mode.width = 600;

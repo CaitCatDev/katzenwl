@@ -3,6 +3,7 @@
 #include <wayland-server-protocol.h>
 
 #include <kwl/log/logger.h>
+#include <kwl/interfaces/kwl-seat.h>
 
 #include <kwl-private/util/macros.h>
 #include <kwl-private/backend/xcb.h>
@@ -78,6 +79,9 @@ int main(int argc, char *argv[]) {
 	kwl_xcb_backend_t *backend = kwl_xcb_backend_init(srv.display);
 	srv.renderer = kwl_renderer_init(backend);
 	
+
+	kwl_seat_init(srv.display);
+
 	srv.listener.notify = kwl_expose_notify;
 
 	
