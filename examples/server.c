@@ -5,8 +5,9 @@
 #include <kwl/log/logger.h>
 #include <kwl/interfaces/kwl-seat.h>
 
+#include <kwl/backend/backend.h>
+
 #include <kwl-private/util/macros.h>
-#include <kwl-private/backend/xcb.h>
 #include <kwl-private/renderer/xcb.h>
 
 #include <unistd.h>
@@ -39,7 +40,6 @@ int sigint_handler(int signo, void *data) {
 
 
 void kwl_compositor_create(struct wl_display *display);
-void *kwl_xcb_backend_init(struct wl_display *display);
 
 void kwl_xcb_clear_screen(kwl_xcb_renderer_t *renderer, float r, float g, float b);
 void *kwl_renderer_init(kwl_xcb_backend_t *backend);
@@ -76,16 +76,15 @@ int main(int argc, char *argv[]) {
 
 	key = wl_event_loop_add_fd(loop, STDIN_FILENO, WL_EVENT_READABLE, stdin_keypress, srv.display);
 	sigint = wl_event_loop_add_signal(loop, SIGINT, sigint_handler, srv.display);
-	kwl_xcb_backend_t *backend = kwl_xcb_backend_init(srv.display);
-	srv.renderer = kwl_renderer_init(backend);
+	kwl_backend_t *backend = kwl_xcb_backend_init(srv.display);
+	srv.renderer = kwl_renderer_init((void *)backend);
 	
 
 	kwl_seat_init(srv.display);
 
 	srv.listener.notify = kwl_expose_notify;
-
+	wl_signal_add(&backend->events.expose, &srv.listener);
 	
-	wl_signal_add(&backend->expose, &srv.listener);
 	wl_display_run(srv.display);
 
 	wl_event_source_remove(key);

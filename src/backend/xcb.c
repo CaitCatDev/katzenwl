@@ -61,7 +61,7 @@ static void kwl_xcb_expose(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
 	xcb->height = expose->height;
 	xcb->width = expose->width;
 
-	wl_signal_emit(&xcb->expose, NULL);
+	wl_signal_emit(&xcb->impl.events.expose, NULL);
 }
 
 /* TODO: should we move the output creation as it's in a bit of akwards state.
@@ -125,7 +125,7 @@ static int kwl_xcb_event(int fd, uint32_t mask, void *data) {
 	return 0;
 }
 
-void *kwl_xcb_backend_init(struct wl_display *display) {
+kwl_backend_t *kwl_xcb_backend_init(struct wl_display *display) {
 	int prefscreen, error;
 	xcb_void_cookie_t cookie;
 	kwl_xcb_backend_t *xcb;
@@ -193,7 +193,7 @@ void *kwl_xcb_backend_init(struct wl_display *display) {
 	loop = wl_display_get_event_loop(display);
 	xcb->display = display;
 
-	wl_signal_init(&xcb->expose);
+	wl_signal_init(&xcb->impl.events.expose);
 	
 	kwl_log_info("%d\n", xcb_get_file_descriptor(xcb->connection));
 
@@ -203,5 +203,5 @@ void *kwl_xcb_backend_init(struct wl_display *display) {
 	xcb->height = 600;
 	xcb->width = 600;
 
-	return xcb;
+	return (kwl_backend_t *)xcb;
 }
