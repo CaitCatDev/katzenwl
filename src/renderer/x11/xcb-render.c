@@ -8,8 +8,9 @@
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 
-#include <kwl-private/renderer/allocators/allocator.h>
+#include <kwl/renderer/allocators/allocator.h>
 #include <kwl-private/renderer/xcb.h>
+#include <kwl/interfaces/kwl-buffer.h>
 
 #include <sys/mman.h>
 
@@ -19,9 +20,12 @@ void kwl_xcb_clear_screen(kwl_xcb_renderer_t *renderer, float r, float g, float 
 	uint8_t blue = 0xff * b;
 	uint32_t color = red << 16 | green << 8 | blue;
 	uint32_t *data;
+	kwl_buffer_t *buffer;
 	
 	kwl_allocator_t *allocator = kwl_allocator_create((void*)renderer->xcb);
-	data = allocator->allocate_buffer(renderer->xcb->height, renderer->xcb->width, 0);
+	buffer = allocator->allocate_buffer(renderer->xcb->height, renderer->xcb->width, 0);
+
+	data = kwl_buffer_get_data_ptr(buffer);
 
 	printf("Color: %x\n", color);
 

@@ -30,7 +30,7 @@ typedef struct kwl_backend kwl_backend_t;
 typedef void (*kwl_backend_start_t)(kwl_backend_t *backend);
 typedef void (*kwl_backend_deinit_t)(kwl_backend_t *backend);
 
-/** \todo at the moment this will cause issues as the
+/** HACK: at the moment this will cause issues as the
  * expose event will cause issues on multiple output
  * displays as this assumes one output/all outputs 
  * having the same redrawing intervals

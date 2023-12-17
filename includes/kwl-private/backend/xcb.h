@@ -43,5 +43,3 @@ typedef struct kwl_xcb_backend {
 } kwl_xcb_backend_t;
 
 kwl_backend_t *kwl_xcb_backend_init(struct wl_display *display);
-
-
