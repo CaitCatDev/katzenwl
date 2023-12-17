@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
 
 	key = wl_event_loop_add_fd(loop, STDIN_FILENO, WL_EVENT_READABLE, stdin_keypress, srv.display);
 	sigint = wl_event_loop_add_signal(loop, SIGINT, sigint_handler, srv.display);
-	kwl_backend_t *backend = kwl_xcb_backend_init(srv.display);
+	kwl_backend_t *backend = kwl_backend_init_env(srv.display);
 	srv.renderer = kwl_renderer_init((void *)backend);
 	
 
@@ -85,10 +85,13 @@ int main(int argc, char *argv[]) {
 	srv.listener.notify = kwl_expose_notify;
 	wl_signal_add(&backend->events.expose, &srv.listener);
 	
+	kwl_backend_start(backend);
+
 	wl_display_run(srv.display);
 
 	wl_event_source_remove(key);
 	wl_event_source_remove(sigint);
+	kwl_backend_deinit(backend);
 	wl_display_destroy(srv.display);
 	
 	return 0;

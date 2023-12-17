@@ -19,6 +19,14 @@
 #include <string.h>
 #include <stdlib.h>
 
+void kwl_backend_deinit(kwl_backend_t *backend) {
+	backend->callbacks.deinit(backend);
+}
+
+void kwl_backend_start(kwl_backend_t *backend) {
+	backend->callbacks.start(backend);
+}
+
 kwl_backend_t *kwl_backend_init_name(const char *name, struct wl_display *display) {
 	
 	if(strncmp(name, "xcb", 3) == 0) {

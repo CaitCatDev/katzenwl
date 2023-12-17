@@ -92,8 +92,6 @@ static void kwl_xcb_map(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
 static void kwl_xcb_configure(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
 	xcb_configure_notify_event_t *configure = (void*)ev;
 	
-	kwl_log_warn("Configure %dx%d\n", configure->width, configure->height);
-
 	if(xcb->output) {
 	xcb->output->mode.height = configure->height;
 	xcb->output->mode.width = configure->width;
@@ -116,13 +114,35 @@ static int kwl_xcb_event(int fd, uint32_t mask, void *data) {
 				kwl_xcb_configure(xcb, ev);
 				break;
 			default:
-				kwl_log_warn("Unhandled Event: %s\n", xcb_errors_get_name_for_xcb_event(xcb->err_ctx, ev, NULL));
+				kwl_log_info("Unhandled Event: %s\n", xcb_errors_get_name_for_xcb_event(xcb->err_ctx, ev, NULL));
 		}
 		xcb_flush(xcb->connection);
 		free(ev);
 	}
 
 	return 0;
+}
+
+void kwl_xcb_backend_start(kwl_backend_t *backend) {
+	kwl_xcb_backend_t *xcb = (void *)backend;
+
+	xcb_map_window(xcb->connection, xcb->window);
+
+	xcb_flush(xcb->connection);
+}
+
+void kwl_xcb_backend_deinit(kwl_backend_t *backend) {
+	kwl_xcb_backend_t *xcb = (void *)backend;
+	free(xcb->output);
+	wl_event_source_remove(xcb->xevent);
+
+	xcb_destroy_window(xcb->connection, xcb->window);
+
+	xcb_errors_context_free(xcb->err_ctx);
+
+	xcb_disconnect(xcb->connection);
+
+	free(xcb);
 }
 
 kwl_backend_t *kwl_xcb_backend_init(struct wl_display *display) {
@@ -171,14 +191,8 @@ kwl_backend_t *kwl_xcb_backend_init(struct wl_display *display) {
               XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
 			  XCB_EVENT_MASK_STRUCTURE_NOTIFY;
 	cookie = xcb_create_window_checked(xcb->connection, 24, xcb->window, xcb->screen->root,
-								0, 0, 600, 600, 1, XCB_WINDOW_CLASS_INPUT_OUTPUT, xcb->screen->root_visual,
-								mask, values);
-
-	xcb->gc = xcb_generate_id(xcb->connection);
-	values[0] = xcb->screen->black_pixel;
-	mask = XCB_GC_FOREGROUND;
-
-	xcb_create_gc(xcb->connection, xcb->gc, xcb->window, mask, values);
+								0, 0, 600, 600, 1, XCB_WINDOW_CLASS_INPUT_OUTPUT, 
+								xcb->screen->root_visual, mask, values);
 
 	xerror = xcb_request_check(xcb->connection, cookie);
 	if(xerror) {
@@ -186,9 +200,17 @@ kwl_backend_t *kwl_xcb_backend_init(struct wl_display *display) {
 		free(xerror);
 	}
 
-	xcb_map_window(xcb->connection, xcb->window);
+	xcb->gc = xcb_generate_id(xcb->connection);
+	values[0] = xcb->screen->black_pixel;
+	mask = XCB_GC_FOREGROUND;
 
-	xcb_flush(xcb->connection);
+	xcb_create_gc_checked(xcb->connection, xcb->gc, xcb->window, mask, values);
+
+	xerror = xcb_request_check(xcb->connection, cookie);
+	if(xerror) {
+		kwl_xcb_pretty_print_error(xcb->err_ctx, xerror);
+		free(xerror);
+	}
 
 	loop = wl_display_get_event_loop(display);
 	xcb->display = display;
@@ -199,7 +221,9 @@ kwl_backend_t *kwl_xcb_backend_init(struct wl_display *display) {
 
 	xcb->xevent = wl_event_loop_add_fd(loop, xcb_get_file_descriptor(xcb->connection), 
 			WL_EVENT_READABLE, kwl_xcb_event, xcb);
-
+	
+	xcb->impl.callbacks.deinit = kwl_xcb_backend_deinit;
+	xcb->impl.callbacks.start = kwl_xcb_backend_start;
 	xcb->height = 600;
 	xcb->width = 600;
 

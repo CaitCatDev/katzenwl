@@ -8,14 +8,20 @@
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 
+#include <kwl-private/renderer/allocators/allocator.h>
 #include <kwl-private/renderer/xcb.h>
+
+#include <sys/mman.h>
 
 void kwl_xcb_clear_screen(kwl_xcb_renderer_t *renderer, float r, float g, float b) {
 	uint8_t red = 0xff * r;
 	uint8_t green = 0xff * g;
 	uint8_t blue = 0xff * b;
 	uint32_t color = red << 16 | green << 8 | blue;
-	uint32_t *data = calloc(4, renderer->xcb->width * renderer->xcb->height);
+	uint32_t *data;
+	
+	kwl_allocator_t *allocator = kwl_allocator_create((void*)renderer->xcb);
+	data = allocator->allocate_buffer(renderer->xcb->height, renderer->xcb->width, 0);
 
 	printf("Color: %x\n", color);
 
@@ -29,7 +35,9 @@ void kwl_xcb_clear_screen(kwl_xcb_renderer_t *renderer, float r, float g, float 
 			renderer->xcb->gc, renderer->xcb->width, renderer->xcb->height, 0, 0, 0, 24, 
 			4 * renderer->xcb->width * renderer->xcb->height, (void*)data);
 
-	free(data);
+	munmap(data, renderer->xcb->height * renderer->xcb->width * 4);
+
+	allocator->destory(allocator);
 	xcb_flush(renderer->xcb->connection);
 
 }
