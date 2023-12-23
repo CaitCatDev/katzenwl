@@ -36,6 +36,7 @@ typedef void (*kwl_backend_deinit_t)(kwl_backend_t *backend);
  * having the same redrawing intervals
  */
 struct kwl_backend_events {
+	struct wl_signal new_output;
 	struct wl_signal expose; /**< Redraw output(s) */
 };
 

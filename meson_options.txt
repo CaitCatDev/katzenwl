@@ -1,0 +1,2 @@
+option('disable-xcb-backend', type : 'boolean', value : false, description : 'disable xcb backend support')
+option('disable-drm-backend', type : 'boolean', value : false, description : 'disable libdrm backend support')

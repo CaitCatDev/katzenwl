@@ -11,6 +11,7 @@
 #include <kwl/log/logger.h>
 
 #include <kwl-private/backend/xcb.h>
+#include <kwl-private/backend/drm.h>
 
 /*Wayland*/
 #include <wayland-server.h>
@@ -31,8 +32,9 @@ kwl_backend_t *kwl_backend_init_name(const char *name, struct wl_display *displa
 	
 	if(strncmp(name, "xcb", 3) == 0) {
 		return kwl_xcb_backend_init(display);
+	} else if(strncmp(name, "drm", 3) == 0) {
+		return kwl_drm_backend_init(display);
 	}
-
 	return NULL;
 }
 
@@ -48,5 +50,5 @@ kwl_backend_t *kwl_backend_init_env(struct wl_display *display) {
 		return kwl_backend_init_name("xcb", display);
 	}
 
-	return NULL;
+	return kwl_backend_init_name("drm", display);
 }

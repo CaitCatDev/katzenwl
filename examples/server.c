@@ -1,18 +1,20 @@
+#include <stdint.h>
+#include <stdlib.h>
 #include <wayland-server.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 
 #include <kwl/log/logger.h>
 #include <kwl/interfaces/kwl-seat.h>
-
+#include <kwl/interfaces/kwl-output.h>
 #include <kwl/backend/backend.h>
 
+
 #include <kwl-private/util/macros.h>
-#include <kwl-private/renderer/xcb.h>
+#include <kwl-private/renderer/software.h>
 
 #include <unistd.h>
 #include <signal.h>
-#include <wayland-util.h>
 
 
 void kwl_compositor_create(struct wl_display *display);	
@@ -38,23 +40,33 @@ int sigint_handler(int signo, void *data) {
 }
 
 
-
 void kwl_compositor_create(struct wl_display *display);
-
-void kwl_xcb_clear_screen(kwl_xcb_renderer_t *renderer, float r, float g, float b);
-void *kwl_renderer_init(kwl_xcb_backend_t *backend);
 
 struct kwl_server {
 	struct wl_display *display;
-	kwl_xcb_renderer_t *renderer;
-	struct wl_listener listener;
+	kwl_software_renderer_t *renderer;
+	struct wl_listener frame;
+	struct wl_listener new_output;
 };
 
-void kwl_expose_notify(struct wl_listener *listen, void *data) {
-	struct kwl_server *srv = wl_container_of(listen, srv, listener);
+/*Data is a kwl_output_t that needs rendered to*/ 
+void kwl_frame_notify(struct wl_listener *listen, void *data) {
+	struct kwl_server *srv = wl_container_of(listen, srv, frame);
+	kwl_output_t *output = data;
 
+	float r = output->color;;
 
-	kwl_xcb_clear_screen(srv->renderer, 0.2f, 0.2f, 0.3f);
+	kwl_software_renderer_clear_screen(data, srv->renderer, r, 0.2f, 0.3f);
+}
+
+/*Data is the kwl_output_t *structure*/
+void kwl_server_add_output(struct wl_listener *listener, void *data) {
+	struct kwl_server *srv = wl_container_of(listener, srv, new_output);
+	
+	kwl_output_t *output = data;
+	output->color = ((float)rand() / (float)(RAND_MAX)) * 1.0f;
+	kwl_log_debug("%f\n", output->color);	
+	wl_signal_add(&output->events.frame, &srv->frame);	
 }
 
 int main(int argc, char *argv[]) {
@@ -77,14 +89,18 @@ int main(int argc, char *argv[]) {
 	key = wl_event_loop_add_fd(loop, STDIN_FILENO, WL_EVENT_READABLE, stdin_keypress, srv.display);
 	sigint = wl_event_loop_add_signal(loop, SIGINT, sigint_handler, srv.display);
 	kwl_backend_t *backend = kwl_backend_init_env(srv.display);
-	srv.renderer = kwl_renderer_init((void *)backend);
+	srv.renderer = kwl_software_renderer_init((void *)backend);
 	
 
 	kwl_seat_init(srv.display);
-
-	srv.listener.notify = kwl_expose_notify;
-	wl_signal_add(&backend->events.expose, &srv.listener);
 	
+	srv.frame.notify = kwl_frame_notify;
+
+	srv.new_output.notify = kwl_server_add_output;
+	wl_signal_add(&backend->events.new_output, &srv.new_output);
+	
+	srand(time(NULL));
+
 	kwl_backend_start(backend);
 
 	wl_display_run(srv.display);
@@ -93,7 +109,6 @@ int main(int argc, char *argv[]) {
 	wl_event_source_remove(sigint);
 	kwl_backend_deinit(backend);
 	wl_display_destroy(srv.display);
-	
 	return 0;
 
 	UNUSED(argc);

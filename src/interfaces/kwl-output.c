@@ -41,7 +41,7 @@ static const struct wl_output_interface wl_output_implementation  = {
 	.release = NULL,
 };
 
-static void kwl_output_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
+void kwl_output_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
 	struct wl_resource *resource;
 	kwl_output_t *output = data;
 	kwl_log_info("%d %d\n", version, wl_output_interface.version);

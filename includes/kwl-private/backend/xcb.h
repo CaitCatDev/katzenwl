@@ -33,7 +33,7 @@ typedef struct kwl_xcb_backend {
 
 	xcb_errors_context_t *err_ctx;
 
-	kwl_output_t *output;
+	struct wl_list outputs;
 
 	/* Wayland Even source to call X event loop
 	 * inside wl_display run 

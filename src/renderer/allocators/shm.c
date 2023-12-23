@@ -30,6 +30,7 @@ void kwl_shm_buffer_free(kwl_buffer_t *buffer) {
 	kwl_shm_buffer_t *shm = (void *)buffer;
 
 	munmap(shm->data, shm->stride * shm->height);
+	free(shm);
 }
 
 kwl_buffer_t *kwl_shm_allocate_buffer(uint32_t height, uint32_t width, uint32_t format) {
