@@ -8,6 +8,7 @@
 
 #define WL_COMPOSITOR_VERSION 6
 
+/*Surface implementation*/
 
 static void kwl_compositor_create_surface(struct wl_client *client, struct wl_resource *resource, uint32_t id) {
 	UNUSED(id);
@@ -15,6 +16,8 @@ static void kwl_compositor_create_surface(struct wl_client *client, struct wl_re
 	UNUSED(client);
 }
 
+
+/*Region Implementation*/
 static void kwl_compositor_create_region(struct wl_client *client, struct wl_resource *resource, uint32_t id) {
 	UNUSED(id);
 	UNUSED(resource);
@@ -43,7 +46,7 @@ static void kwl_compositor_bind(struct wl_client *client, void *data, uint32_t v
 	UNUSED(version);
 }
 
-void kwl_compositor_create(struct wl_display *display) {
-	wl_global_create(display, &wl_compositor_interface,
+struct wl_global *kwl_compositor_create(struct wl_display *display) {
+	return wl_global_create(display, &wl_compositor_interface,
 			WL_COMPOSITOR_VERSION, NULL, kwl_compositor_bind);
 }

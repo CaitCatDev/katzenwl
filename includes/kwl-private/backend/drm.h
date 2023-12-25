@@ -35,7 +35,7 @@
 typedef struct kwl_drm_backend {
 	kwl_backend_t impl;
 	
-	int fd;
+	int fd, dev;
 	
 	struct udev *udev;
 	struct libinput *input;
@@ -45,6 +45,9 @@ typedef struct kwl_drm_backend {
 	struct wl_list outputs;
 
 	struct wl_display *display;
+	struct wl_event_source *input_ev;
+	struct wl_event_source *seatd_ev;
+	struct wl_event_source *drm_ev;
 } kwl_drm_backend_t;
 
 kwl_backend_t *kwl_drm_backend_init(struct wl_display *display);

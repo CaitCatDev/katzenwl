@@ -55,6 +55,8 @@ typedef struct kwl_drm_fb {
 	uint32_t bpp, depth;
 
 	uint32_t *data;
+
+	int fd;
 } kwl_drm_fb_t;
 
 typedef struct kwl_drm_output {
@@ -63,6 +65,8 @@ typedef struct kwl_drm_output {
 	drmModeConnectorPtr connector;
 	drmModeCrtcPtr saved_crtc;
 	kwl_drm_fb_t *fb;
+	int shutdown;
+	int waiting;
 } kwl_drm_output_t;
 
 kwl_drm_fb_t *kwl_drm_backend_create_fb(int fd, uint32_t width, uint32_t height, uint32_t bpp, uint32_t depth) {
@@ -79,7 +83,7 @@ kwl_drm_fb_t *kwl_drm_backend_create_fb(int fd, uint32_t width, uint32_t height,
 	fb->height = height;
 	fb->bpp = bpp;
 	fb->depth = depth;
-
+	fb->fd = fd;
 	
 	
 	res = drmModeCreateDumbBuffer(fd, width, height, bpp, 0, &fb->handle, &fb->pitch, &fb->size);
@@ -119,11 +123,31 @@ err_calloc:
 	return NULL;
 }
 
+void kwl_drm_backend_destroy_fb(kwl_drm_fb_t *fb) {
+	
+	munmap(fb->data, fb->size);
+
+	drmModeRmFB(fb->fd, fb->fb_id);
+	drmModeDestroyDumbBuffer(fb->fd, fb->handle);
+
+	free(fb);
+}
 
 static void handle_enable(struct libseat *backend, void *data) {
 	(void)backend;
 	kwl_drm_backend_t *drm = data;
+	kwl_output_t *output;
+	kwl_drm_output_t *drm_out;
 	
+	wl_list_for_each(output, &drm->outputs, link) {
+		drm_out = (void *)output;
+		drm_out->shutdown = 0;
+
+		drmModeSetCrtc(drm->fd,  drm_out->saved_crtc->crtc_id, drm_out->fb->fb_id, 0, 0, &drm_out->connector->connector_id, 1, drm_out->connector->modes);	
+			
+		drmModePageFlip(drm->fd, drm_out->saved_crtc->crtc_id, drm_out->fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, output);
+		drm_out->waiting = 1;
+	}
 
 	libinput_resume(drm->input);
 	drm->active++;
@@ -132,8 +156,20 @@ static void handle_enable(struct libseat *backend, void *data) {
 static void handle_disable(struct libseat *backend, void *data) {
 	(void)backend;
 	kwl_drm_backend_t *drm = data;
+	kwl_output_t *output;
+	kwl_drm_output_t *drm_out;
 	drm->active--;
 	
+
+	wl_list_for_each(output, &drm->outputs, link) {
+		drm_out = (void *)output;
+		drm_out->shutdown = 1;
+	}
+
+	wl_list_for_each(output, &drm->outputs, link) {
+		while(drm_out->waiting) {};
+	}
+
 	libinput_suspend(drm->input);
 	libseat_disable_seat(backend);
 }
@@ -200,23 +236,65 @@ void kwl_drm_backend_start(kwl_backend_t *backend) {
 	wl_list_for_each(output, &drm->outputs, link) {
 		wl_signal_emit(&backend->events.new_output, output);
 		drm_out = (void *)output;
-		if(drmModePageFlip(drm->fd, drm_out->saved_crtc->crtc_id, drm_out->fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, output)) {
-			
-		}
+		drmModePageFlip(drm->fd, drm_out->saved_crtc->crtc_id, drm_out->fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, output);
+		drm_out->waiting = 1;
 	}
 
 
 	return;
 }
 
+void kwl_drm_output_deinit(kwl_drm_output_t *output) {
+	drmModeFreeConnector(output->connector);
+	free(output->output.make);
+	free(output->output.model);
+
+	wl_global_remove(output->output.global);
+
+	free(output);
+}
+
 void kwl_drm_backend_deinit(kwl_backend_t *backend) {
 	kwl_drm_backend_t *drm = (void *)backend;
+	kwl_drm_output_t *drm_out;
+	kwl_output_t *output, *tmp;
+
+	wl_list_for_each(output, &drm->outputs, link) {
+		drm_out = (void *)output;
+		drm_out->shutdown = 1;
+	}
+
+	wl_list_for_each_safe(output, tmp, &drm->outputs, link) {
+		while(drm_out->waiting) {};
+		drmModeSetCrtc(drm->fd, drm_out->saved_crtc->crtc_id, drm_out->saved_crtc->buffer_id, 
+				0, 0, &drm_out->connector->connector_id, 1, &drm_out->saved_crtc->mode);
+
+		kwl_drm_backend_destroy_fb(drm_out->fb);
+		drmModeFreeCrtc(drm_out->saved_crtc);
+		
+		wl_list_remove(&output->link);
+		kwl_drm_output_deinit(drm_out);
+	}
+
+	wl_event_source_remove(drm->drm_ev);
+	wl_event_source_remove(drm->seatd_ev);
+	wl_event_source_remove(drm->input_ev);
+
+	libseat_close_device(drm->seat, drm->dev);
+
 	libseat_close_seat(drm->seat);
+
+	libinput_unref(drm->input);
+
+	udev_unref(drm->udev);
+
+	free(drm);
 }
 
 uint16_t bswap(uint16_t i) {
 	uint8_t high = (i >> 8) & 0xff;
 	uint8_t low = (i) & 0xff;
+
 
 	return (low << 8) | high;
 }
@@ -260,15 +338,14 @@ void parse_edid(void *edid, size_t length, kwl_output_t *output) {
 static void page_flip_handler(int fd, unsigned int frame,
 		unsigned int sec, unsigned int usec, void *data) {
 	
-	kwl_log_debug("%p\n", data);
-	
-	if(data == NULL) {
-		exit(1);
-	}
 	kwl_drm_output_t *output = data;
-	wl_signal_emit(&output->output.events.frame, data);
-	if(drmModePageFlip(fd, output->saved_crtc->crtc_id, output->fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, output)) {
-		kwl_log_debug("Error Flipping page\n");
+	output->waiting = 0;
+
+	if(output->shutdown == 0) {
+		wl_signal_emit(&output->output.events.frame, data);
+		if(drmModePageFlip(fd, output->saved_crtc->crtc_id, output->fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, output)) {
+			kwl_log_debug("Error Flipping page\n");
+		}
 	}
 	
 }
@@ -306,7 +383,6 @@ kwl_drm_output_t *kwl_drm_output_init(struct wl_display *display) {
 
 kwl_backend_t *kwl_drm_backend_init(struct wl_display *display) {
 	kwl_drm_backend_t *drm;
-	int dev = 0;
 	struct wl_event_loop *loop = wl_display_get_event_loop(display);
 	drm = calloc(1, sizeof(kwl_drm_backend_t));
 	
@@ -320,8 +396,8 @@ kwl_backend_t *kwl_drm_backend_init(struct wl_display *display) {
 	wl_list_init(&drm->outputs);
 
 	int fd = libinput_get_fd(drm->input);
-	wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, kwl_input_read_event, drm);
-	wl_event_loop_add_fd(loop, libseat_get_fd(drm->seat), WL_EVENT_READABLE, kwl_input_seatd_event, drm);
+	drm->input_ev = wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, kwl_input_read_event, drm);
+	drm->seatd_ev = wl_event_loop_add_fd(loop, libseat_get_fd(drm->seat), WL_EVENT_READABLE, kwl_input_seatd_event, drm);
 	libseat_dispatch(drm->seat, 0);
 
 	libseat_set_log_level(LIBSEAT_LOG_LEVEL_INFO);
@@ -329,14 +405,12 @@ kwl_backend_t *kwl_drm_backend_init(struct wl_display *display) {
 	kwl_log_debug("Seat active\n");
 
 	//drm->fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
-	dev = libseat_open_device(drm->seat, "/dev/dri/card1", &drm->fd);
+	drm->dev = libseat_open_device(drm->seat, "/dev/dri/card1", &drm->fd);
 	kwl_log_debug("libseat open device backend: %p path: %s\nDev %d Fd %d\n",
-			drm->seat, "/dev/dri/card1", dev, drm->fd);
+			drm->seat, "/dev/dri/card1", drm->dev, drm->fd);
 
-	if(!wl_event_loop_add_fd(loop, drm->fd, WL_EVENT_READABLE, kwl_drm_event, drm)) {
-		kwl_log_debug("Failed to add DRM events\n");
-	}
-	
+	drm->drm_ev = wl_event_loop_add_fd(loop, drm->fd, WL_EVENT_READABLE, kwl_drm_event, drm);
+
 	drmModeResPtr res = drmModeGetResources(drm->fd);
 
 	wl_list_init(&drm->outputs);
@@ -360,10 +434,14 @@ kwl_backend_t *kwl_drm_backend_init(struct wl_display *display) {
 			
 				if(strcmp(prop->name, "EDID") == 0) {
 					drmModePropertyBlobPtr blob = drmModeGetPropertyBlob(drm->fd, connector->prop_values[i]);
-					kwl_log_debug("EDID Blob:\n");
+					kwl_log_debug("EDID Blob:");
 					for(uint32_t i = 0; i < blob->length; i++) {
+						if((i % 20) == 0) {
+							kwl_log_printf(KWL_LOG_DEBUG, "\n");
+						}
 						kwl_log_printf(KWL_LOG_DEBUG, "%.2x ", ((uint8_t*)blob->data)[i]);
 					}
+					kwl_log_printf(KWL_LOG_DEBUG, "\n");
 					parse_edid(blob->data, blob->length, &output->output);
 					drmModeFreePropertyBlob(blob);
 				}
@@ -374,14 +452,20 @@ kwl_backend_t *kwl_drm_backend_init(struct wl_display *display) {
 
 			drmModeEncoderPtr enc = drmModeGetEncoder(drm->fd, connector->encoder_id);
 			output->saved_crtc = drmModeGetCrtc(drm->fd, enc->crtc_id);
+			drmModeFreeEncoder(enc);
+
 			output->connector = connector;
 			output->fb = kwl_drm_backend_create_fb(drm->fd, connector->modes->hdisplay, connector->modes->vdisplay, 32, 24);
 			memset(output->fb->data, 0xff, output->fb->size);
 
 			drmModeSetCrtc(drm->fd,  output->saved_crtc->crtc_id, output->fb->fb_id, 0, 0, &connector->connector_id, 1, connector->modes);	
 			wl_list_insert(&drm->outputs, &output->output.link);
+			continue;
 		}
+		drmModeFreeConnector(connector);
 	}
+
+	drmModeFreeResources(res);
 	wl_signal_init(&drm->impl.events.new_output);
 	drm->impl.callbacks.start = kwl_drm_backend_start;
 	drm->impl.callbacks.deinit = kwl_drm_backend_deinit;

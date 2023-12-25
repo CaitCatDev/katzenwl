@@ -42,8 +42,9 @@ static void kwl_seat_bind(struct wl_client *client, void *data, uint32_t version
 }
 
 kwl_seat_t *kwl_seat_init(struct wl_display *display) {
+	kwl_seat_t *kwl_seat = calloc(1, sizeof(kwl_seat_t));
 
-	wl_global_create(display, &wl_seat_interface, KWL_SEAT_VERSION, NULL, kwl_seat_bind);
+	kwl_seat->global = wl_global_create(display, &wl_seat_interface, KWL_SEAT_VERSION, NULL, kwl_seat_bind);
 
-	return NULL;
+	return kwl_seat;
 }
