@@ -2,6 +2,7 @@
 
 #include <wayland-server-core.h>
 
+#include <wayland-util.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
@@ -14,6 +15,10 @@
  * backend stuff.
  */
 #include <kwl/interfaces/kwl-output.h>
+
+#include <libinput.h>
+#include <libseat.h>
+#include <libudev.h>
 
 /** 
  * \file drm.h
@@ -32,7 +37,14 @@ typedef struct kwl_drm_backend {
 	
 	int fd;
 	
+	struct udev *udev;
+	struct libinput *input;
+	struct libseat *seat;
+	int active;
 
+	struct wl_list outputs;
+
+	struct wl_display *display;
 } kwl_drm_backend_t;
 
 kwl_backend_t *kwl_drm_backend_init(struct wl_display *display);

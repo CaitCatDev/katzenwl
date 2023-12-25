@@ -73,7 +73,7 @@ static kwl_xcb_output_t *kwl_xcb_output_init(struct wl_display *display) {
 	kwl_xcb_output_t *output = calloc(1, sizeof(kwl_xcb_output_t));
 	
 
-	wl_global_create(display, &wl_output_interface, 1, output, kwl_output_bind);
+	output->output.global = wl_global_create(display, &wl_output_interface, 1, output, kwl_output_bind);
 
 	return output;
 }
@@ -86,12 +86,10 @@ static void kwl_xcb_output_commit(kwl_buffer_t *buffer, kwl_output_t *output) {
 	kwl_xcb_backend_t *xcb = (void *)output->backend;
 	kwl_xcb_output_t *xcb_output = (void *)output;
 	data = kwl_buffer_get_data_ptr(buffer);
-	kwl_log_error("TEST: %p %p %p\n", data, xcb, output);
 	/* TODO: Buffers should store more meta data about themseleves.
 	 * As Ouput and buffer size may not be the exact same and we should 
 	 * really account for this
 	 */
-	/* TODO: maybe output should store it's associated backend with it*/
 	xcb_put_image(xcb->connection, XCB_IMAGE_FORMAT_Z_PIXMAP, 
 			xcb_output->window, xcb->gc, output->mode.width, 
 			output->mode.height, 0, 0, 0, 24, 4 * output->mode.width * output->mode.height, 
@@ -118,7 +116,6 @@ static void kwl_xcb_map(kwl_xcb_backend_t *xcb, xcb_generic_event_t *ev) {
 
 	wl_list_insert(&xcb->outputs, &output->output.link);
 
-	kwl_log_warn("Map %p %p", xcb, output);
 	output->output.backend = (void *)xcb;	
 	output->window = map->window;
 	output->output.make = "XCB Display";
@@ -204,10 +201,21 @@ void kwl_xcb_backend_start(kwl_backend_t *backend) {
 
 void kwl_xcb_backend_deinit(kwl_backend_t *backend) {
 	kwl_xcb_backend_t *xcb = (void *)backend;
+	kwl_output_t *output, *tmp;
+	kwl_xcb_output_t *xcb_output;
 	wl_event_source_remove(xcb->xevent);
 
-	xcb_destroy_window(xcb->connection, xcb->window);
+	wl_list_for_each_safe(output, tmp, &xcb->outputs, link) {
+		xcb_output = (void *) output;
+		
+		xcb_unmap_window(xcb->connection, xcb_output->window);
+		xcb_destroy_window(xcb->connection, xcb_output->window);
+		wl_global_destroy(output->global);
+		wl_list_remove(&output->link);
+		free(output);
+	}
 
+	xcb_free_gc(xcb->connection, xcb->gc);
 	xcb_errors_context_free(xcb->err_ctx);
 
 	xcb_disconnect(xcb->connection);

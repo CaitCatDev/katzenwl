@@ -28,8 +28,10 @@ src_files = [
 # Dependencies
 wayland_deps = dependency('wayland-server')
 libseat = dependency('libseat')
+libinput = dependency('libinput')
+libudev = dependency('libudev')
 
-deps = [ wayland_deps, libseat ]
+deps = [ wayland_deps, libseat, libinput, libudev ]
 
 # Includes Directory
 includes = include_directories('includes')

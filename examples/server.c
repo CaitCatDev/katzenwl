@@ -49,6 +49,11 @@ struct kwl_server {
 	struct wl_listener new_output;
 };
 
+struct kwl_loutput {
+	kwl_output_t *output;
+	struct wl_listener frame;
+};
+
 /*Data is a kwl_output_t that needs rendered to*/ 
 void kwl_frame_notify(struct wl_listener *listen, void *data) {
 	struct kwl_server *srv = wl_container_of(listen, srv, frame);
@@ -62,17 +67,19 @@ void kwl_frame_notify(struct wl_listener *listen, void *data) {
 /*Data is the kwl_output_t *structure*/
 void kwl_server_add_output(struct wl_listener *listener, void *data) {
 	struct kwl_server *srv = wl_container_of(listener, srv, new_output);
-	
+	struct kwl_loutput *loutput = calloc(1, sizeof(*loutput));
+
 	kwl_output_t *output = data;
+	loutput->output = output;
 	output->color = ((float)rand() / (float)(RAND_MAX)) * 1.0f;
-	kwl_log_debug("%f\n", output->color);	
-	wl_signal_add(&output->events.frame, &srv->frame);	
+	wl_signal_add(&output->events.frame, &loutput->frame);	
+
 }
 
 int main(int argc, char *argv[]) {
 	struct kwl_server srv;
 	struct wl_event_loop *loop;
-	struct wl_event_source *key, *sigint;
+	struct wl_event_source *sigint;
 	const char *socket;
 
 	srv.display = wl_display_create();
@@ -86,11 +93,10 @@ int main(int argc, char *argv[]) {
 	kwl_compositor_create(srv.display);
 	wl_display_init_shm(srv.display);
 
-	key = wl_event_loop_add_fd(loop, STDIN_FILENO, WL_EVENT_READABLE, stdin_keypress, srv.display);
+	//key = wl_event_loop_add_fd(loop, STDIN_FILENO, WL_EVENT_READABLE, stdin_keypress, srv.display);
 	sigint = wl_event_loop_add_signal(loop, SIGINT, sigint_handler, srv.display);
 	kwl_backend_t *backend = kwl_backend_init_env(srv.display);
 	srv.renderer = kwl_software_renderer_init((void *)backend);
-	
 
 	kwl_seat_init(srv.display);
 	
@@ -102,10 +108,10 @@ int main(int argc, char *argv[]) {
 	srand(time(NULL));
 
 	kwl_backend_start(backend);
-
+	kwl_log_debug("Running Display\n");
 	wl_display_run(srv.display);
 
-	wl_event_source_remove(key);
+	//wl_event_source_remove(key);
 	wl_event_source_remove(sigint);
 	kwl_backend_deinit(backend);
 	wl_display_destroy(srv.display);

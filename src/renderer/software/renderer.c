@@ -52,8 +52,6 @@ void kwl_software_renderer_clear_screen(kwl_output_t *output, kwl_software_rende
 
 	data = kwl_buffer_get_data_ptr(buffer);
 
-	printf("Color: %x\n", color);
-
 	for(uint32_t y = 0; y < output->mode.height; y++) {
 		for(uint32_t x = 0; x < output->mode.width; x++) {
 			data[y * output->mode.width + x] = color;
@@ -63,7 +61,6 @@ void kwl_software_renderer_clear_screen(kwl_output_t *output, kwl_software_rende
 	/*Commit the buffer to the output whatever that may be*/
 	output->impl.commit(buffer, output);
 
-	munmap(data, output->mode.height * output->mode.width * 4);
 
 	buffer->free(buffer);
 	allocator->destory(allocator);

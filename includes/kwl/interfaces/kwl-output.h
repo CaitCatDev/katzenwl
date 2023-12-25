@@ -38,6 +38,9 @@ struct kwl_output_implementation {
 
 struct kwl_output {
 	kwl_backend_t *backend;
+
+	struct wl_global *global;
+
 	char *make;
 	char *model;
 
