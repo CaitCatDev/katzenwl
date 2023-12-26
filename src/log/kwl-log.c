@@ -58,10 +58,10 @@ int kwl_log(enum kwl_log_levels level, const uint32_t line,
 
 	if(level < log_level) return 0;
 
-	printf("%s%s\x1b[0m \x1b[1;35m%s(%u):\x1b[0m \x1b[32m\x1b[0m ", kwl_log_level_color(level), kwl_log_level_str(level), file, line);
+	fprintf(stderr, "%s%s\x1b[0m \x1b[1;35m%s(%u):\x1b[0m \x1b[32m\x1b[0m ", kwl_log_level_color(level), kwl_log_level_str(level), file, line);
 
 	va_start(args, fmt);
-	length = vprintf(fmt, args);
+	length = vfprintf(stderr, fmt, args);
 	va_end(args);
 
 	return length;
@@ -76,7 +76,7 @@ int kwl_log_printf(enum kwl_log_levels level, const char *fmt, ...) {
 	if(level < log_level) return 0;
 
 	va_start(args, fmt);
-	length = vprintf(fmt, args);
+	length = vfprintf(stderr, fmt, args);
 	va_end(args);
 
 	return length;}

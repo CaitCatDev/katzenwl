@@ -138,6 +138,7 @@ static void handle_enable(struct libseat *backend, void *data) {
 	kwl_drm_backend_t *drm = data;
 	kwl_output_t *output;
 	kwl_drm_output_t *drm_out;
+	kwl_log_info("Enabling Seat\n");	
 	
 	wl_list_for_each(output, &drm->outputs, link) {
 		drm_out = (void *)output;
@@ -147,9 +148,15 @@ static void handle_enable(struct libseat *backend, void *data) {
 			
 		drmModePageFlip(drm->fd, drm_out->saved_crtc->crtc_id, drm_out->fb->fb_id, DRM_MODE_PAGE_FLIP_EVENT, output);
 		drm_out->waiting = 1;
+		kwl_log_info("DRM devices enabled\n");
 	}
-
-	libinput_resume(drm->input);
+	
+	if(drm->input) {
+		kwl_log_info("Enabling Input Devices\n");
+		libinput_resume(drm->input);
+		kwl_log_info("Enabled Seats\n");
+	}
+	
 	drm->active++;
 }
 
@@ -161,6 +168,7 @@ static void handle_disable(struct libseat *backend, void *data) {
 	drm->active--;
 	
 
+	kwl_log_debug("Disabling DRM devices\n");
 	wl_list_for_each(output, &drm->outputs, link) {
 		drm_out = (void *)output;
 		drm_out->shutdown = 1;
@@ -170,26 +178,56 @@ static void handle_disable(struct libseat *backend, void *data) {
 		while(drm_out->waiting) {};
 	}
 
+	kwl_log_debug("Disabling input devs\n");
 	libinput_suspend(drm->input);
+	kwl_log_debug("Disabling Seat\n");
 	libseat_disable_seat(backend);
+	kwl_log_debug("Disabled Seat\n");
 }
 
 int kwl_input_seatd_event(int fd, unsigned int mask, void *data) {
 	kwl_drm_backend_t *drm = data;
-
-	libseat_dispatch(drm->seat, -1);
-
+	if(libseat_dispatch(drm->seat, 0) == -1) {
+		kwl_log_debug("seatd dispatch error\n");
+		wl_display_terminate(drm->display);
+	}
 	return 0;
 }
 
+static kwl_drm_backend_device_t *kwl_drm_find_device_by_fd(int fd, struct wl_list list) {
+	kwl_drm_backend_device_t *device;
+
+	wl_list_for_each(device, &list, link) {
+		if(device->fd == fd) {
+			return device;
+		}
+	}
+	return NULL;
+}
+
 static void close_res(int fd, void *data) {
-	close(fd);
+	kwl_drm_backend_device_t *device;
+	kwl_drm_backend_t *drm = data;
+	printf("Closing Device: %d\n", fd);	
+	device = kwl_drm_find_device_by_fd(fd, drm->devices);
+	
+	libseat_close_device(drm->seat, device->dev);
+	close(device->fd);
+
+	wl_list_remove(&device->link);
+	free(device);
 }
 
 static int open_res(const char *path, int flags, void *data) {
+	kwl_drm_backend_device_t *device;
+	kwl_drm_backend_t *drm = data;
+	device = calloc(1, sizeof(*device));
 	
-
-	return open(path, flags);
+	device->dev = libseat_open_device(drm->seat, path, &device->fd);
+	
+	wl_list_insert(&drm->devices, &device->link);
+	printf("Opened dev: FD %d Dev %d %s\n", device->fd, device->dev, path);
+	return device->fd;
 }
 
 const static struct libinput_interface libinput_interface = {
@@ -211,7 +249,7 @@ int kwl_input_read_event(int fd, unsigned int mask, void *data) {
 	while((event = libinput_get_event(drm->input)) != NULL) {
 		type = libinput_event_get_type(event);
 		
-		if(type == LIBINPUT_EVENT_KEYBOARD_KEY) {
+		if(type == LIBINPUT_EVENT_KEYBOARD_KEY && libinput_event_keyboard_get_key_state(libinput_event_get_keyboard_event(event)) == LIBINPUT_KEY_STATE_PRESSED) {
 			if(0x10 == libinput_event_keyboard_get_key(libinput_event_get_keyboard_event(event))) {	
 				wl_display_terminate(drm->display);
 			}
@@ -280,11 +318,11 @@ void kwl_drm_backend_deinit(kwl_backend_t *backend) {
 	wl_event_source_remove(drm->seatd_ev);
 	wl_event_source_remove(drm->input_ev);
 
+	libinput_unref(drm->input);
+
 	libseat_close_device(drm->seat, drm->dev);
 
 	libseat_close_seat(drm->seat);
-
-	libinput_unref(drm->input);
 
 	udev_unref(drm->udev);
 
@@ -387,23 +425,18 @@ kwl_backend_t *kwl_drm_backend_init(struct wl_display *display) {
 	drm = calloc(1, sizeof(kwl_drm_backend_t));
 	
 	drm->udev = udev_new();
-
-	drm->input = libinput_udev_create_context(&libinput_interface, NULL, drm->udev);
-	kwl_log_debug("%p %p\n", drm->udev, drm->input);
-	libinput_udev_assign_seat(drm->input, "seat0");
-
-	drm->seat = libseat_open_seat(&listener, drm);
+	wl_list_init(&drm->devices);
 	wl_list_init(&drm->outputs);
-
-	int fd = libinput_get_fd(drm->input);
-	drm->input_ev = wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, kwl_input_read_event, drm);
+	
+	drm->seat = libseat_open_seat(&listener, drm);
+	while(drm->active == 0) {
+		libseat_dispatch(drm->seat, 0);
+	}
 	drm->seatd_ev = wl_event_loop_add_fd(loop, libseat_get_fd(drm->seat), WL_EVENT_READABLE, kwl_input_seatd_event, drm);
-	libseat_dispatch(drm->seat, 0);
 
 	libseat_set_log_level(LIBSEAT_LOG_LEVEL_INFO);
 
-	kwl_log_debug("Seat active\n");
-
+	kwl_log_debug("Seat: %s active\n", libseat_seat_name(drm->seat));
 	//drm->fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
 	drm->dev = libseat_open_device(drm->seat, "/dev/dri/card1", &drm->fd);
 	kwl_log_debug("libseat open device backend: %p path: %s\nDev %d Fd %d\n",
@@ -412,6 +445,15 @@ kwl_backend_t *kwl_drm_backend_init(struct wl_display *display) {
 	drm->drm_ev = wl_event_loop_add_fd(loop, drm->fd, WL_EVENT_READABLE, kwl_drm_event, drm);
 
 	drmModeResPtr res = drmModeGetResources(drm->fd);
+	/*Libinput */
+	drm->input = libinput_udev_create_context(&libinput_interface, drm, drm->udev);
+	kwl_log_debug("%p %p\n", drm->udev, drm->input);
+	libinput_udev_assign_seat(drm->input, libseat_seat_name(drm->seat));
+
+	int fd = libinput_get_fd(drm->input);
+
+	drm->input_ev = wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, kwl_input_read_event, drm);
+
 
 	wl_list_init(&drm->outputs);
 

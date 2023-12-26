@@ -33,7 +33,6 @@ int stdin_keypress(int fd, unsigned int mask, void *data) {
 
 int sigint_handler(int signo, void *data) {
 	kwl_log_info("Sigint Recieved\n");
-	wl_display_terminate(data);
 
 	return 0;
 	UNUSED(signo);
